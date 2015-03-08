@@ -27,7 +27,6 @@ Public Class FrmMain
     Dim Vox_Dialogs As List(Of Vox_Dialog)
 
     Dim Header() As Byte
-    Dim PACB_Appendix() As Byte
     Dim VAG1_Section() As Byte
     Private Sub DialogList_SelectedIndexChanged(sender As Object, e As EventArgs) Handles DialogList.SelectedIndexChanged
         Apply()
@@ -152,37 +151,36 @@ Public Class FrmMain
                 Exit Sub
             End If
 
+            Dim Temp As UInt32 = Input.Position
+            Input.Seek(PACB_Offset - &HC, SeekOrigin.Begin)
+            Dim VAG1_Offset As UInt32 = Reader.ReadUInt32() + (PACB_Offset - &H10)
+            Input.Seek(Temp, SeekOrigin.Begin)
+
             Dim Section_Length As UInt32 = Reader.ReadInt32() + PACB_Offset + 8
             While Input.Position < Section_Length
+                Dim Offset As Integer
                 Dim Dialog As Vox_Dialog
-                Dialog.Offset_1 = Reader.ReadUInt32()
-                Dialog.Offset_2 = Reader.ReadUInt32()
-                Dialog.Offset_3 = Reader.ReadUInt32()
-                Dim Dialog_Length As UInt16 = Reader.ReadUInt16()
-                Dialog.Language_ID = Reader.ReadUInt16()
-                Dim Offset As Integer = Input.Position
-                Dialog.Text = Utils.Read_String(Input, Input.Position)
+                With Dialog
+                    .Offset_1 = Reader.ReadUInt32()
+                    .Offset_2 = Reader.ReadUInt32()
+                    .Offset_3 = Reader.ReadUInt32()
+                    Dim Dialog_Length As UInt16 = Reader.ReadUInt16()
+                    .Language_ID = Reader.ReadUInt16()
+                    Offset = Input.Position
+                    .Text = Utils.Read_String(Input, Input.Position)
+                End With
                 Vox_Dialogs.Add(Dialog)
                 If Not Silent_Mode Then DialogList.Items.Add("0x" & Hex(Offset).PadLeft(8, "0"c) & " [" & Crop_Text(Dialog.Text) & "]")
             End While
-
-            Input.Seek(PACB_Offset - &HC, SeekOrigin.Begin)
-            Dim VAG1_Offset As UInt32 = Reader.ReadUInt32() + PACB_Offset
 
             'Lê dados adicionais do arquivo (texturas?)
             Input.Seek(0, SeekOrigin.Begin)
             ReDim Header(PACB_Offset - 1)
             Input.Read(Header, 0, Header.Length)
 
-            Input.Seek(Section_Length, SeekOrigin.Begin)
-            Dim Length As UInt32 = VAG1_Offset - Section_Length
-            ReDim PACB_Appendix(Length - 1)
-            Input.Read(PACB_Appendix, 0, Length)
-
             Input.Seek(VAG1_Offset, SeekOrigin.Begin)
-            Length = Input.Length - VAG1_Offset
-            ReDim VAG1_Section(Length - 1)
-            Input.Read(VAG1_Section, 0, Length)
+            ReDim VAG1_Section(Input.Length - VAG1_Offset - 1)
+            Input.Read(VAG1_Section, 0, VAG1_Section.Length)
 
             '---
 
@@ -227,7 +225,7 @@ Public Class FrmMain
 
                         Output.Seek(Str_Offset, SeekOrigin.Begin)
                         If Dialog IsNot Nothing Then
-                            Dim Buffer() As Byte = Encoding.UTF8.GetBytes(Dialog.Replace(Environment.NewLine, Convert.ToChar(&HA)))
+                            Dim Buffer() As Byte = Adapt_Text(Dialog)
                             Writer.Write(Buffer)
                             Temp_Buffer.Write(Buffer, 0, Buffer.Length)
                             Str_Offset += Buffer.Length
@@ -259,25 +257,44 @@ Public Class FrmMain
                     Writer.Write(Header)
                     Writer.Write(Encoding.ASCII.GetBytes("PACB"))
                     Writer.Write(Convert.ToUInt32(0)) 'Section Length (Place Holder)
+                    Dim PACB_Length As Integer = 8
                     For Each Dialog As Vox_Dialog In Vox_Dialogs
-                        Writer.Write(Dialog.Offset_1)
-                        Writer.Write(Dialog.Offset_2)
-                        Writer.Write(Dialog.Offset_3)
-                        Dim Text() As Byte = Encoding.UTF8.GetBytes(Dialog.Text.Replace(Environment.NewLine, Convert.ToChar(&HA)))
-                        Writer.Write(Convert.ToUInt16(Text.Length + 1 + &H10))
-                        Writer.Write(Dialog.Language_ID)
-                        Writer.Write(Text)
-                        Writer.Write(Convert.ToByte(0))
+                        If Dialog.Text IsNot Nothing Then
+                            Dim Text() As Byte = Adapt_Text(Dialog.Text)
+                            PACB_Length += Text.Length + 1 + &H10
+                        Else
+                            PACB_Length += &H11
+                        End If
+                    Next
+                    Dim VAG1_Offset As Integer = Header.Length + PACB_Length
+                    Do
+                        If (VAG1_Offset And &HF) = 0 Then Exit Do
+                        VAG1_Offset += 1
+                    Loop
+                    For Each Dialog As Vox_Dialog In Vox_Dialogs
+                        Writer.Write(Convert.ToUInt32(Dialog.Offset_1))
+                        Writer.Write(Convert.ToUInt32(Dialog.Offset_2))
+                        Writer.Write(Convert.ToUInt32(Dialog.Offset_3))
+                        If Dialog.Text IsNot Nothing Then
+                            Dim Text() As Byte = Adapt_Text(Dialog.Text)
+                            Writer.Write(Convert.ToUInt16(Text.Length + 1 + &H10))
+                            Writer.Write(Dialog.Language_ID)
+                            Writer.Write(Text)
+                            Writer.Write(Convert.ToByte(0))
+                        Else
+                            Writer.Write(Convert.ToUInt16(&H11))
+                            Writer.Write(Dialog.Language_ID)
+                            Writer.Write(Convert.ToByte(0))
+                        End If
                     Next
 
                     Dim Temp_1 As UInt32 = Output.Position - Header.Length - 8
 
-                    Writer.Write(PACB_Appendix)
-                    Dim Temp_2 As UInt32 = Output.Position - Header.Length
+                    Output.Seek(VAG1_Offset, SeekOrigin.Begin)
                     Writer.Write(VAG1_Section)
 
                     Output.Seek(Header.Length - &HC, SeekOrigin.Begin)
-                    Writer.Write(Temp_2)
+                    Writer.Write(VAG1_Offset - (Header.Length - &H10))
 
                     Output.Seek(Header.Length + 4, SeekOrigin.Begin)
                     Writer.Write(Temp_1)
@@ -365,4 +382,24 @@ Public Class FrmMain
 
         If Dumped Then MessageBox.Show("Arquivos dumpados com sucesso!", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information)
     End Sub
+
+    Private Function Adapt_Text(Text As String) As Byte()
+        Dim Out As New List(Of Byte)
+        For i As Integer = 0 To Text.Length - 1
+            Dim Value As Byte = Asc(Text.Substring(i, 1))
+            If Value = &HD Then
+                Out.Add(&HA)
+                i += 1
+            ElseIf Value = &HA Then
+                Out.Add(&HA)
+            ElseIf Text.Substring(i, 1) = "\" Then
+                Value = Convert.ToByte(Text.Substring(i + 3, 2), 16)
+                Out.Add(Value)
+                i += 4
+            Else
+                Out.AddRange(Encoding.UTF8.GetBytes(Text.Substring(i, 1)).ToList())
+            End If
+        Next
+        Return Out.ToArray()
+    End Function
 End Class

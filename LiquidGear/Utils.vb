@@ -25,7 +25,11 @@ Public Class Utils
                 Buffer(1) = Data.ReadByte()
                 Text &= Encoding.UTF8.GetString(Buffer)
             Else 'ANSI
-                Text &= Chr(CurrByte)
+                If CurrByte > &H7F Then
+                    Text &= "\0x" & Hex(CurrByte).PadLeft(2, "0"c)
+                Else
+                    Text &= Chr(CurrByte)
+                End If
             End If
             CurrByte = Data.ReadByte()
         End While

@@ -30,9 +30,9 @@ Partial Class FrmMain
         '
         'LblTitle
         '
-        Me.LblTitle.Location = New System.Drawing.Point(229, 4)
-        Me.LblTitle.Size = New System.Drawing.Size(183, 19)
-        Me.LblTitle.Text = "LiquidGear v0.1 by gdkchan"
+        Me.LblTitle.Location = New System.Drawing.Point(4, 4)
+        Me.LblTitle.Size = New System.Drawing.Size(273, 19)
+        Me.LblTitle.Text = "LiquidGear build 08/03/15 #1 by gdkchan"
         '
         'TxtDialogs
         '
