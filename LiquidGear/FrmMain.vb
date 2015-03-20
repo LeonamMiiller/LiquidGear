@@ -337,15 +337,16 @@ Public Class FrmMain
 
         Dim Header_Offset As Integer
         Dim Magic As String = Nothing
+        Dim Found As Boolean = False
         For Offset As Integer = 0 To VAG1_Section.Length - 1 Step 4
             Magic = Utils.Read_String(VAG1_Section, Offset, 4)
             If Magic = "VAG1" Or Magic = "VAG2" Then
                 Header_Offset = Offset
+                Found = True
                 Exit For
-            ElseIf Offset = VAG1_Section.Length - 1 Then
-                Exit Sub
             End If
         Next
+        If Not Found Then Exit Sub
 
         Dim Channels As Integer = 1
         Dim Bits_Per_Sample As UInt32 = 16
