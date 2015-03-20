@@ -9,6 +9,13 @@ Public Class Utils
         Next
         Return Text
     End Function
+    Public Shared Function Read_String(Data() As Byte, Offset As Integer, Length As Integer) As String
+        Dim Text As String = Nothing
+        For i As Integer = 0 To Length - 1
+            Text &= Chr(Data(Offset + i))
+        Next
+        Return Text
+    End Function
     Public Shared Function Read_String(Data As FileStream, Offset As Integer) As String
         Data.Seek(Offset, SeekOrigin.Begin)
         Dim Text As String = Nothing
